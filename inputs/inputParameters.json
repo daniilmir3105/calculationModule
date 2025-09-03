@@ -1,0 +1,15 @@
+{
+    "solver": "2356c206-2958-4e9d-b610-3c7dfa02cd28",
+    "timeout": 60,
+    "input_file": "inputs/noised.npy",
+    "model_file": "trained_model/model.pth",
+    "output_file": "results/denoised.npy",
+    "dashboard": null,
+    "description": "Эксперимент по денойзингу с использованием нейросети",
+    "use_gpu": true,
+    "Date": 1767214800000,
+    "Double": 3.14,
+    "Integer": 128,
+    "Timestamp": 1767214800000,
+    "UUID": "66666666-6666-6666-6666-666666666666"
+}
