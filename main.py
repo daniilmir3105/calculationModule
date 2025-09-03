@@ -5,37 +5,60 @@ import time
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import segyio  # pip install segyio
 
 from util.My_tool1 import *
 
-INPUT_PATH = "inputs/noised.npy"
+INPUT_PATH = "inputs/noised.segy"
 MODEL_PATH = "trained_model/model.pth"
-OUTPUT_PATH = "results/denoised.npy"
+OUTPUT_PATH = "results/denoised.segy"
 PARAMS_PATH = "inputs/inputParameters.json"
 
 
 def report_progress(perc: float):
-    """
-    Выводит прогресс выполнения в stdout в формате <PROGRESS: N %>.
-    :param perc: процент выполнения, игнорируются значения > 100
-    """
+    """Выводит прогресс выполнения в stdout в формате <PROGRESS: N %>."""
     if perc <= 100:
         print(f"<PROGRESS: {int(perc)} %>", flush=True)
 
 
 def load_parameters(path: str) -> dict:
-    """
-    Загружает параметры из JSON-файла.
-    Значения Date и Timestamp хранятся как long (мс с 1970-01-01).
-    :param path: путь к JSON
-    :return: словарь параметров
-    """
+    """Загружает параметры из JSON-файла. Значения Date и Timestamp хранятся как long (мс с 1970-01-01)."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Файл параметров не найден: {path}")
     with open(path, "r", encoding="utf-8") as f:
         params = json.load(f)
-    report_progress(5)  # Загрузка параметров завершена
+    report_progress(5)
     return params
+
+
+def read_segy(file_path: str) -> np.ndarray:
+    """
+    Чтение SEGY 2D и возврат в виде numpy массива (traces x samples)
+    """
+    with segyio.open(file_path, "r", ignore_geometry=True) as segyfile:
+        n_traces = segyfile.tracecount
+        n_samples = segyfile.samples.size
+        data = np.zeros((n_traces, n_samples), dtype=np.float32)
+        for i in range(n_traces):
+            data[i, :] = segyfile.trace[i]
+    return data
+
+def write_segy(file_path: str, data: np.ndarray, template_path: str):
+    """
+    Запись 2D numpy массива в SEGY, используя исходный файл как шаблон для заголовков.
+    """
+    n_traces, n_samples = data.shape
+    with segyio.open(template_path, "r", ignore_geometry=True) as template:
+        spec = segyio.spec()
+        spec.format = template.format
+        spec.samples = template.samples[:n_samples]  # подрезаем, если нужно
+        spec.ilines = [0]  # фиктивная линия
+        spec.xlines = list(range(n_traces))
+
+    with segyio.create(file_path, spec) as segy_out:
+        for i in range(n_traces):
+            segy_out.trace[i] = data[i, :]
+        segy_out.flush()
 
 
 def main():
@@ -50,11 +73,11 @@ def main():
     model = torch.load(MODEL_PATH, map_location=device)
     model.to(device)
     model.eval()
-    report_progress(30)  # Модель загружена
+    report_progress(30)
 
-    # Загружаем данные
-    y = np.load(INPUT_PATH)
-    report_progress(50)  # Данные загружены
+    # Загружаем SEGY данные
+    y = read_segy(INPUT_PATH)
+    report_progress(50)
 
     # Переводим данные на device
     y_tensor = torch.from_numpy(y).view(1, -1, y.shape[0], y.shape[1])
@@ -64,7 +87,7 @@ def main():
     start_time = time.time()
     x_tensor = model(y_tensor)
     elapsed_time = time.time() - start_time
-    report_progress(80)  # Инференс завершен
+    report_progress(80)
 
     # Преобразуем результат в numpy
     x_ = (
@@ -74,7 +97,7 @@ def main():
         .numpy()
         .astype(np.float64)
     )
-    report_progress(90)  # Результат подготовлен
+    report_progress(90)
 
     print(f"Inference time: {elapsed_time:.3f} seconds")
 
@@ -91,9 +114,9 @@ def main():
     plt.ylabel("Время свободного пробега, мс")
     plt.show()
 
-    # Сохраняем результат
-    np.save(OUTPUT_PATH, x_)
-    report_progress(100)  # Сохранение завершено
+    # Сохраняем результат в SEGY, используя исходный файл как шаблон для заголовков
+    write_segy(OUTPUT_PATH, x_, INPUT_PATH)
+    report_progress(100)
     print(f"Результат сохранён в {OUTPUT_PATH}")
 
 
